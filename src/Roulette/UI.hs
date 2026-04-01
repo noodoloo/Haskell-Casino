@@ -50,45 +50,53 @@ render :: GameState -> IO Picture
 render st =
     pure $
         pictures
-            [ color (greyN 0.95) $ translate (-570) 340 $ scale 0.22 0.22 $ text "Roulette"
-            , drawStatus st
-            , drawInstructions
-            , drawTableFrame
+            [ drawTableFrame
             , drawBoard
             , drawOutsideBets
             , drawPlacedChips st
             , drawChipSelector st
+            , drawHudPanel
+            , color (greyN 0.95) $ translate (-570) 340 $ scale 0.22 0.22 $ text "Roulette"
+            , drawStatus st
+            , drawInstructions
             ]
+
+drawHudPanel :: Picture
+drawHudPanel =
+    pictures
+        [ color (makeColorI 8 60 30 240) $ translate (-468) 120 $ rectangleSolid 248 455
+        , color (makeColorI 210 185 110 255) $ translate (-468) 120 $ rectangleWire 248 455
+        ]
 
 drawStatus :: GameState -> Picture
 drawStatus st =
     let reserved = sum (map amount (activeBets st))
         available = balance st - reserved
      in pictures
-            [ translate (-570) 250 $ scale 0.18 0.18 $ color white $ text ("Balance: $" ++ show (balance st))
-            , translate (-570) 210 $ scale 0.14 0.14 $ color white $ text ("On table: $" ++ show reserved)
-            , translate (-570) 170 $ scale 0.14 0.14 $ color white $ text ("Available: $" ++ show available)
-            , translate (-570) 130 $ scale 0.14 0.14 $ color white $ text ("Active bets: " ++ show (length (activeBets st)))
-            , translate (-570) 90 $ scale 0.14 0.14 $ color white $ text ("Last spin: " ++ maybe "none" showSpin (lastSpin st))
-            , translate (-570) 38 $ scale 0.11 0.11 $ color white $ text (trimMessage 34 (message st))
+            [ translate (-620) 250 $ scale 0.18 0.18 $ color white $ text ("Balance: $" ++ show (balance st))
+            , translate (-620) 210 $ scale 0.14 0.14 $ color white $ text ("On table: $" ++ show reserved)
+            , translate (-620) 170 $ scale 0.14 0.14 $ color white $ text ("Available: $" ++ show available)
+            , translate (-620) 130 $ scale 0.14 0.14 $ color white $ text ("Active bets: " ++ show (length (activeBets st)))
+            , translate (-620) 90 $ scale 0.14 0.14 $ color white $ text ("Last spin: " ++ maybe "none" showSpin (lastSpin st))
+            , translate (-620) 38 $ scale 0.11 0.11 $ color white $ text (trimMessage 34 (message st))
             ]
 
 drawInstructions :: Picture
 drawInstructions =
     pictures
-        [ translate (-570) (-58) $
+        [ translate (-620) (-58) $
             scale 0.105 0.105 $
                 color (light white) $
                     text "Click any number or outside bet"
-        , translate (-570) (-88) $
+        , translate (-620) (-88) $
             scale 0.105 0.105 $
                 color (light white) $
                     text "to place a chip on the table."
-        , translate (-570) (-122) $
+        , translate (-620) (-122) $
             scale 0.105 0.105 $
                 color (light white) $
                     text "Press C to cycle chips."
-        , translate (-570) (-152) $
+        , translate (-620) (-152) $
             scale 0.105 0.105 $
                 color (light white) $
                     text "Press Enter to spin."
@@ -248,7 +256,7 @@ chipPosition :: BetType -> (Float, Float)
 chipPosition chosenBet =
     case chosenBet of
         StraightUp 0 ->
-            (zeroLeft + zeroWidth / 2, boardBottom + (cellHeight * 1.5) + 14)
+            (zeroLeft + zeroWidth / 2, boardBottom + (cellHeight * 1.5) + 22)
         StraightUp n ->
             let positions = [(value, chipXY rowIndex colIndex) | (rowIndex, row) <- zip [0 ..] boardNumbers, (colIndex, value) <- zip [0 ..] row]
              in maybe (0, 0) snd (find ((== n) . fst) positions)
@@ -262,7 +270,7 @@ chipPosition chosenBet =
 chipXY :: Int -> Int -> (Float, Float)
 chipXY rowIndex colIndex =
     ( boardLeft + fromIntegral colIndex * cellWidth + cellWidth / 2
-    , boardBottom + fromIntegral rowIndex * cellHeight + cellHeight / 2 + 14
+    , boardBottom + fromIntegral rowIndex * cellHeight + cellHeight / 2 + 22
     )
 
 outsideCenter :: Int -> (Float, Float)
