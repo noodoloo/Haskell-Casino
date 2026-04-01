@@ -19,22 +19,27 @@ fps = 60
 cellWidth, cellHeight, boardLeft, boardBottom :: Float
 cellWidth = 76
 cellHeight = 76
-boardLeft = -120
-boardBottom = -280
+boardLeft = -290
+boardBottom = -180
 
 zeroLeft, zeroWidth, sidePanelX :: Float
 zeroLeft = boardLeft - 84
 zeroWidth = 76
-sidePanelX = 480
+sidePanelX = boardLeft + 565
+
+tablePadding, tableTop, chipTrayTop :: Float
+tablePadding = 34
+tableTop = boardBottom + (cellHeight * 3) + 46
+chipTrayTop = 255
 
 outsideBetBoxes :: [(BetType, (Float, Float, Float, Float), String)]
 outsideBetBoxes =
-    [ (Red, (-120, -370, 150, 58), "Red")
-    , (Black, (40, -370, 150, 58), "Black")
-    , (Even, (200, -370, 150, 58), "Even")
-    , (Odd, (-120, -438, 150, 58), "Odd")
-    , (Low, (40, -438, 150, 58), "1 to 18")
-    , (High, (200, -438, 150, 58), "19 to 36")
+    [ (Red, (boardLeft, boardBottom - 82, 160, 58), "Red")
+    , (Black, (boardLeft + 170, boardBottom - 82, 160, 58), "Black")
+    , (Even, (boardLeft + 340, boardBottom - 82, 160, 58), "Even")
+    , (Odd, (boardLeft, boardBottom - 150, 160, 58), "Odd")
+    , (Low, (boardLeft + 170, boardBottom - 150, 160, 58), "1 to 18")
+    , (High, (boardLeft + 340, boardBottom - 150, 160, 58), "19 to 36")
     ]
 
 runRouletteApp :: IO ()
@@ -48,6 +53,7 @@ render st =
             [ color (greyN 0.95) $ translate (-560) 340 $ scale 0.22 0.22 $ text "Roulette"
             , drawStatus st
             , drawInstructions
+            , drawTableFrame
             , drawBoard
             , drawOutsideBets
             , drawPlacedChips st
@@ -70,15 +76,31 @@ drawStatus st =
 drawInstructions :: Picture
 drawInstructions =
     pictures
-        [ translate (-560) (-40) $
+        [ translate (-560) (-60) $
             scale 0.12 0.12 $
                 color (light white) $
                     text "Click any number or outside bet to place a chip."
-        , translate (-560) (-75) $
+        , translate (-560) (-95) $
             scale 0.12 0.12 $
                 color (light white) $
                     text "Press C to cycle chips ($5/$10/$25/$50). Press Enter to spin."
         ]
+
+drawTableFrame :: Picture
+drawTableFrame =
+    let tableLeft = zeroLeft - tablePadding
+        tableRight = boardLeft + (cellWidth * 12) + tablePadding
+        tableBottom = boardBottom - 172
+        tableWidth = tableRight - tableLeft
+        tableHeight = tableTop - tableBottom
+        centerX = (tableLeft + tableRight) / 2
+        centerY = (tableBottom + tableTop) / 2
+     in pictures
+            [ color (makeColorI 88 48 22 255) $ translate centerX centerY $ rectangleSolid tableWidth tableHeight
+            , color (makeColorI 128 79 38 255) $ translate centerX centerY $ rectangleSolid (tableWidth - 18) (tableHeight - 18)
+            , color (makeColorI 12 94 48 255) $ translate centerX centerY $ rectangleSolid (tableWidth - 34) (tableHeight - 34)
+            , color (makeColorI 210 185 110 255) $ translate centerX centerY $ rectangleWire (tableWidth - 8) (tableHeight - 8)
+            ]
 
 drawBoard :: Picture
 drawBoard =
@@ -151,14 +173,17 @@ drawChip bet =
 drawChipSelector :: GameState -> Picture
 drawChipSelector st =
     pictures
-        [ translate sidePanelX 260 $ scale 0.16 0.16 $ color white $ text "Chip Tray"
+        [ color (makeColorI 88 48 22 255) $ translate (sidePanelX + 40) 110 $ rectangleSolid 120 340
+        , color (makeColorI 12 94 48 255) $ translate (sidePanelX + 40) 110 $ rectangleSolid 98 318
+        , color (makeColorI 210 185 110 255) $ translate (sidePanelX + 40) 110 $ rectangleWire 120 340
+        , translate sidePanelX 300 $ scale 0.16 0.16 $ color white $ text "Chip Tray"
         , pictures $ zipWith (drawChipOption (selectedChip st)) [0 ..] chipValues
         ]
 
 drawChipOption :: Int -> Int -> Int -> Picture
 drawChipOption selected idx chipValue =
     let x = sidePanelX + 45
-        y = 185 - fromIntegral idx * 88
+        y = chipTrayTop - fromIntegral idx * 78
         ringColor
             | selected == chipValue = makeColorI 255 245 180 255
             | otherwise = makeColorI 210 210 210 255
@@ -215,7 +240,7 @@ chipPosition :: BetType -> (Float, Float)
 chipPosition chosenBet =
     case chosenBet of
         StraightUp 0 ->
-            (zeroLeft + zeroWidth / 2, boardBottom + (cellHeight * 1.5))
+            (zeroLeft + zeroWidth / 2, boardBottom + (cellHeight * 1.5) + 14)
         StraightUp n ->
             let positions = [(value, chipXY rowIndex colIndex) | (rowIndex, row) <- zip [0 ..] boardNumbers, (colIndex, value) <- zip [0 ..] row]
              in maybe (0, 0) snd (find ((== n) . fst) positions)
@@ -229,7 +254,7 @@ chipPosition chosenBet =
 chipXY :: Int -> Int -> (Float, Float)
 chipXY rowIndex colIndex =
     ( boardLeft + fromIntegral colIndex * cellWidth + cellWidth / 2
-    , boardBottom + fromIntegral rowIndex * cellHeight + cellHeight / 2
+    , boardBottom + fromIntegral rowIndex * cellHeight + cellHeight / 2 + 14
     )
 
 outsideCenter :: Int -> (Float, Float)
