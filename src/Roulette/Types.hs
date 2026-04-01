@@ -3,6 +3,7 @@ module Roulette.Types
     , Bet(..)
     , SpinResult(..)
     , GameState(..)
+    , chipValues
     , initialState
     , boardNumbers
     ) where
@@ -31,18 +32,23 @@ data SpinResult = SpinResult
 
 data GameState = GameState
     { balance    :: Int
-    , currentBet :: Maybe Bet
+    , activeBets :: [Bet]
+    , selectedChip :: Int
     , lastSpin   :: Maybe SpinResult
     , message    :: String
     }
     deriving (Eq, Show)
 
+chipValues :: [Int]
+chipValues = [5, 10, 25, 50]
+
 initialState :: GameState
 initialState = GameState
     { balance = 500
-    , currentBet = Nothing
+    , activeBets = []
+    , selectedChip = 25
     , lastSpin = Nothing
-    , message = "Press 1-6 to place a bet, Enter to spin."
+    , message = "Click the table to place chips. Press C to change chip, Enter to spin."
     }
 
 boardNumbers :: [[Int]]

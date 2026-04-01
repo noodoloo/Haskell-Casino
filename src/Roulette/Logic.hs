@@ -3,6 +3,7 @@ module Roulette.Logic
     , resolveBet
     , spinWheel
     , placeBet
+    , cycleChip
     , applySpin
     ) where
 
@@ -46,28 +47,40 @@ placeBet :: Bet -> GameState -> GameState
 placeBet bet st
     | amount bet <= 0 =
         st {message = "Bet amount must be positive."}
-    | amount bet > balance st =
+    | amount bet > availableBalance st =
         st {message = "Not enough balance for that bet."}
     | otherwise =
-        st
-            { currentBet = Just bet
-            , message = "Bet locked in. Press Enter to spin."
+        let updatedBets = addOrMergeBet bet (activeBets st)
+         in st
+                { activeBets = updatedBets
+                , message = "Chip placed. Press Enter to spin or keep betting."
+                }
+
+cycleChip :: GameState -> GameState
+cycleChip st =
+    let nextChip =
+            case dropWhile (/= selectedChip st) chipValues of
+                (_ : x : _) -> x
+                _ -> head chipValues
+     in st
+            { selectedChip = nextChip
+            , message = "Selected chip: $" ++ show nextChip
             }
 
 applySpin :: SpinResult -> GameState -> GameState
 applySpin result st =
-    case currentBet st of
-        Nothing ->
+    case activeBets st of
+        [] ->
             st {message = "Place a bet before spinning."}
-        Just bet ->
-            let delta = resolveBet bet result
+        bets ->
+            let delta = sum (map (`resolveBet` result) bets)
                 newBalance = balance st + delta
                 outcomeText
                     | delta >= 0 = "You won $" ++ show delta ++ "."
                     | otherwise = "You lost $" ++ show (abs delta) ++ "."
              in st
                     { balance = newBalance
-                    , currentBet = Nothing
+                    , activeBets = []
                     , lastSpin = Just result
                     , message =
                         "Rolled "
@@ -75,3 +88,14 @@ applySpin result st =
                             ++ ". "
                             ++ outcomeText
                     }
+
+availableBalance :: GameState -> Int
+availableBalance st = balance st - sum (map amount (activeBets st))
+
+addOrMergeBet :: Bet -> [Bet] -> [Bet]
+addOrMergeBet bet [] = [bet]
+addOrMergeBet bet (existing : rest)
+    | betType existing == betType bet =
+        existing {amount = amount existing + amount bet} : rest
+    | otherwise =
+        existing : addOrMergeBet bet rest

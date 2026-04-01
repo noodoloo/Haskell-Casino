@@ -13,20 +13,15 @@ That split makes it easier for two people to work in parallel: one person can im
 
 ## Current controls
 
-- `1` places a red bet for `$25`
-- `2` places a black bet for `$25`
-- `3` places an even bet for `$25`
-- `4` places an odd bet for `$25`
-- `5` places a low bet for `$25`
-- `6` places a high bet for `$25`
-- `7` places a straight-up bet on `17` for `$10`
-- `Enter` spins the wheel
+- Left click places a chip on a number or outside-bet box.
+- `C` cycles chip values through `$5`, `$10`, `$25`, and `$50`.
+- `Enter` spins the wheel and resolves every placed chip together.
 
 ## Suggested next steps
 
-1. Add chip selection instead of fixed bet sizes.
-2. Support more roulette bet types like dozens, columns, and splits.
-3. Animate the wheel and ball rather than instantly revealing the result.
+1. Support more roulette bet types like dozens, columns, splits, and corners.
+2. Animate the wheel and ball rather than instantly revealing the result.
+3. Add chip removal, undo, or clear-table controls before a spin.
 4. Add tests for payout rules in `Roulette.Logic`.
 5. Decide whether your course/project wants American roulette (`0` and `00`) or European roulette (`0` only).
 
