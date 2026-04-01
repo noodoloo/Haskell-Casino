@@ -50,7 +50,7 @@ render :: GameState -> IO Picture
 render st =
     pure $
         pictures
-            [ color (greyN 0.95) $ translate (-560) 340 $ scale 0.22 0.22 $ text "Roulette"
+            [ color (greyN 0.95) $ translate (-570) 340 $ scale 0.22 0.22 $ text "Roulette"
             , drawStatus st
             , drawInstructions
             , drawTableFrame
@@ -65,25 +65,33 @@ drawStatus st =
     let reserved = sum (map amount (activeBets st))
         available = balance st - reserved
      in pictures
-            [ translate (-560) 250 $ scale 0.18 0.18 $ color white $ text ("Balance: $" ++ show (balance st))
-            , translate (-560) 210 $ scale 0.14 0.14 $ color white $ text ("On table: $" ++ show reserved)
-            , translate (-560) 170 $ scale 0.14 0.14 $ color white $ text ("Available: $" ++ show available)
-            , translate (-560) 130 $ scale 0.14 0.14 $ color white $ text ("Active bets: " ++ show (length (activeBets st)))
-            , translate (-560) 90 $ scale 0.14 0.14 $ color white $ text ("Last spin: " ++ maybe "none" showSpin (lastSpin st))
-            , translate (-560) 40 $ scale 0.13 0.13 $ color white $ text (message st)
+            [ translate (-570) 250 $ scale 0.18 0.18 $ color white $ text ("Balance: $" ++ show (balance st))
+            , translate (-570) 210 $ scale 0.14 0.14 $ color white $ text ("On table: $" ++ show reserved)
+            , translate (-570) 170 $ scale 0.14 0.14 $ color white $ text ("Available: $" ++ show available)
+            , translate (-570) 130 $ scale 0.14 0.14 $ color white $ text ("Active bets: " ++ show (length (activeBets st)))
+            , translate (-570) 90 $ scale 0.14 0.14 $ color white $ text ("Last spin: " ++ maybe "none" showSpin (lastSpin st))
+            , translate (-570) 38 $ scale 0.11 0.11 $ color white $ text (trimMessage 34 (message st))
             ]
 
 drawInstructions :: Picture
 drawInstructions =
     pictures
-        [ translate (-560) (-60) $
-            scale 0.12 0.12 $
+        [ translate (-570) (-58) $
+            scale 0.105 0.105 $
                 color (light white) $
-                    text "Click any number or outside bet to place a chip."
-        , translate (-560) (-95) $
-            scale 0.12 0.12 $
+                    text "Click any number or outside bet"
+        , translate (-570) (-88) $
+            scale 0.105 0.105 $
                 color (light white) $
-                    text "Press C to cycle chips ($5/$10/$25/$50). Press Enter to spin."
+                    text "to place a chip on the table."
+        , translate (-570) (-122) $
+            scale 0.105 0.105 $
+                color (light white) $
+                    text "Press C to cycle chips."
+        , translate (-570) (-152) $
+            scale 0.105 0.105 $
+                color (light white) $
+                    text "Press Enter to spin."
         ]
 
 drawTableFrame :: Picture
@@ -287,3 +295,9 @@ showSpin result =
             | wasRed result = "Red"
             | otherwise = "Black"
      in show (rolledNumber result) ++ " " ++ colorName
+
+trimMessage :: Int -> String -> String
+trimMessage maxLen msg
+    | length msg <= maxLen = msg
+    | maxLen <= 3 = take maxLen msg
+    | otherwise = take (maxLen - 3) msg ++ "..."
