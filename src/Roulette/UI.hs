@@ -30,7 +30,7 @@ sidePanelX = boardLeft + 610
 tablePadding, tableTop, chipTrayTop :: Float
 tablePadding = 34
 tableTop = boardBottom + (cellHeight * 3) + 46
-chipTrayTop = 290
+chipTrayTop = 355
 
 hudPanelX, hudPanelY, hudTextX :: Float
 hudPanelX = -555
@@ -59,6 +59,7 @@ render st =
             , drawBoard
             , drawOutsideBets
             , drawPlacedChips st
+            , drawWheel st
             , drawChipSelector st
             , drawHudPanel
             , color (greyN 0.95) $ translate hudTextX 340 $ scale 0.22 0.22 $ text "Roulette"
@@ -77,12 +78,16 @@ drawStatus :: GameState -> Picture
 drawStatus st =
     let reserved = sum (map amount (activeBets st))
         available = balance st - reserved
+        spinLabel =
+            if isSpinning st
+                then "spinning..."
+                else maybe "none" showSpin (lastSpin st)
      in pictures
             [ translate hudTextX 250 $ scale 0.18 0.18 $ color white $ text ("Balance: $" ++ show (balance st))
             , translate hudTextX 210 $ scale 0.14 0.14 $ color white $ text ("On table: $" ++ show reserved)
             , translate hudTextX 170 $ scale 0.14 0.14 $ color white $ text ("Available: $" ++ show available)
             , translate hudTextX 130 $ scale 0.14 0.14 $ color white $ text ("Active bets: " ++ show (length (activeBets st)))
-            , translate hudTextX 90 $ scale 0.14 0.14 $ color white $ text ("Last spin: " ++ maybe "none" showSpin (lastSpin st))
+            , translate hudTextX 90 $ scale 0.14 0.14 $ color white $ text ("Last spin: " ++ spinLabel)
             , translate hudTextX 38 $ scale 0.11 0.11 $ color white $ text (trimMessage 34 (message st))
             ]
 
@@ -194,17 +199,17 @@ drawChip bet =
 drawChipSelector :: GameState -> Picture
 drawChipSelector st =
     pictures
-        [ color (makeColorI 88 48 22 255) $ translate (sidePanelX + 40) 145 $ rectangleSolid 120 340
-        , color (makeColorI 12 94 48 255) $ translate (sidePanelX + 40) 145 $ rectangleSolid 98 318
-        , color (makeColorI 210 185 110 255) $ translate (sidePanelX + 40) 145 $ rectangleWire 120 340
-        , translate sidePanelX 335 $ scale 0.16 0.16 $ color white $ text "Chip Tray"
+        [ color (makeColorI 88 48 22 255) $ translate (sidePanelX + 40) 250 $ rectangleSolid 120 300
+        , color (makeColorI 12 94 48 255) $ translate (sidePanelX + 40) 250 $ rectangleSolid 98 278
+        , color (makeColorI 210 185 110 255) $ translate (sidePanelX + 40) 250 $ rectangleWire 120 300
+        , translate sidePanelX 405 $ scale 0.16 0.16 $ color white $ text "Chip Tray"
         , pictures $ zipWith (drawChipOption (selectedChip st)) [0 ..] chipValues
         ]
 
 drawChipOption :: Int -> Int -> Int -> Picture
 drawChipOption selected idx chipValue =
     let x = sidePanelX + 45
-        y = chipTrayTop - fromIntegral idx * 78
+        y = chipTrayTop - fromIntegral idx * 70
         ringColor
             | selected == chipValue = makeColorI 255 245 180 255
             | otherwise = makeColorI 210 210 210 255
@@ -215,23 +220,171 @@ drawChipOption selected idx chipValue =
                 , translate (-14) (-6) $ scale 0.11 0.11 $ color black $ text ("$" ++ show chipValue)
                 ]
 
+drawWheel :: GameState -> Picture
+drawWheel st =
+    let centerX = 530
+        centerY = 235
+     in translate centerX centerY $
+            pictures
+                [ color (makeColorI 92 48 20 255) $ thickCircle 98 16
+                , color (makeColorI 30 18 12 255) $ circleSolid 100
+                , rotate (wheelRotation st) $ pictures (zipWith drawWheelPocket [0 ..] wheelOrder)
+                , color (makeColorI 210 185 110 255) $ thickCircle 52 6
+                , color (makeColorI 28 70 42 255) $ circleSolid 54
+                , color (makeColorI 210 185 110 255) $ circleSolid 10
+                , drawBallMarker st
+                , translate (-38) (-5) $ scale 0.08 0.08 $ color white $ text "WHEEL"
+                ]
+
+drawWheelPocket :: Int -> Int -> Picture
+drawWheelPocket idx n =
+    let angle = wheelAngle idx
+        x = 78 * cos angle
+        y = 78 * sin angle
+        pocketColor
+            | n == 0 = makeColorI 25 140 70 255
+            | n `elem` redNumbers = makeColorI 190 30 45 255
+            | otherwise = makeColorI 18 18 18 255
+     in translate x y $
+            rotate (negate (angle * 180 / pi) + 90) $
+                pictures
+                    [ color pocketColor $ circleSolid 11
+                    , color white $ circle 11
+                    , translate (-5) (-3) $ scale 0.045 0.045 $ color white $ text (show n)
+                    ]
+
+drawBallMarker :: GameState -> Picture
+drawBallMarker st =
+    let angle =
+            if isSpinning st
+                then ballRotation st
+                else numberAngle (maybe 0 rolledNumber (lastSpin st))
+        x = 116 * cos angle
+        y = 116 * sin angle
+     in pictures
+            [ color (makeColorI 235 235 220 255) $ translate x y $ circleSolid 8
+            , color (greyN 0.25) $ translate x y $ circle 8
+            ]
+
+wheelOrder :: [Int]
+wheelOrder =
+    [ 0
+    , 32
+    , 15
+    , 19
+    , 4
+    , 21
+    , 2
+    , 25
+    , 17
+    , 34
+    , 6
+    , 27
+    , 13
+    , 36
+    , 11
+    , 30
+    , 8
+    , 23
+    , 10
+    , 5
+    , 24
+    , 16
+    , 33
+    , 1
+    , 20
+    , 14
+    , 31
+    , 9
+    , 22
+    , 18
+    , 29
+    , 7
+    , 28
+    , 12
+    , 35
+    , 3
+    , 26
+    ]
+
+wheelAngle :: Int -> Float
+wheelAngle idx =
+    (pi / 2) - (fromIntegral idx * 2 * pi / fromIntegral (length wheelOrder))
+
+numberAngle :: Int -> Float
+numberAngle n =
+    case findIndexOf n wheelOrder of
+        Just idx -> wheelAngle idx
+        Nothing -> wheelAngle 0
+
+findIndexOf :: Eq a => a -> [a] -> Maybe Int
+findIndexOf target = go 0
+  where
+    go _ [] = Nothing
+    go idx (x : xs)
+        | x == target = Just idx
+        | otherwise = go (idx + 1) xs
+
 handleEvent :: Event -> GameState -> IO GameState
 handleEvent event st =
     case event of
         EventKey (Char 'c') Down _ _ ->
-            pure $ cycleChip st
+            pure $ if isSpinning st then st else cycleChip st
         EventKey (Char 'C') Down _ _ ->
-            pure $ cycleChip st
-        EventKey (SpecialKey KeyEnter) Down _ _ -> do
-            result <- spinWheel
-            pure $ applySpin result st
+            pure $ if isSpinning st then st else cycleChip st
+        EventKey (SpecialKey KeyEnter) Down _ _ ->
+            startSpin st
         EventKey (MouseButton LeftButton) Down _ mousePos ->
-            pure $ placeBetFromClick mousePos st
+            pure $ if isSpinning st then st else placeBetFromClick mousePos st
         _ ->
             pure st
 
 stepWorld :: Float -> GameState -> IO GameState
-stepWorld _ st = pure st
+stepWorld dt st
+    | not (isSpinning st) = pure st
+    | spinTimer st <= dt =
+        pure $
+            case pendingSpin st of
+                Nothing ->
+                    st
+                        { isSpinning = False
+                        , spinTimer = 0
+                        , pendingSpin = Nothing
+                        , wheelRotation = 0
+                        }
+                Just result ->
+                    applySpin
+                        result
+                        st
+                            { isSpinning = False
+                            , spinTimer = 0
+                            , pendingSpin = Nothing
+                            , wheelRotation = 0
+                            , ballRotation = numberAngle (rolledNumber result)
+                            }
+    | otherwise =
+        pure
+            st
+                { spinTimer = spinTimer st - dt
+                , wheelRotation = wheelRotation st + (dt * 520)
+                , ballRotation = ballRotation st - (dt * 10)
+                }
+
+startSpin :: GameState -> IO GameState
+startSpin st
+    | isSpinning st = pure st
+    | null (activeBets st) = pure st {message = "Place a bet before spinning."}
+    | otherwise = do
+        result <- spinWheel
+        pure
+            st
+                { pendingSpin = Just result
+                , isSpinning = True
+                , spinTimer = 2.2
+                , wheelRotation = 0
+                , ballRotation = pi / 2
+                , message = "Wheel spinning..."
+                }
 
 placeBetFromClick :: (Float, Float) -> GameState -> GameState
 placeBetFromClick mousePos st =

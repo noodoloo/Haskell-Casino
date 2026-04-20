@@ -35,6 +35,11 @@ data GameState = GameState
     , activeBets :: [Bet]
     , selectedChip :: Int
     , lastSpin   :: Maybe SpinResult
+    , pendingSpin :: Maybe SpinResult
+    , isSpinning :: Bool
+    , spinTimer :: Float
+    , wheelRotation :: Float
+    , ballRotation :: Float
     , message    :: String
     }
     deriving (Eq, Show)
@@ -48,6 +53,11 @@ initialState = GameState
     , activeBets = []
     , selectedChip = 25
     , lastSpin = Nothing
+    , pendingSpin = Nothing
+    , isSpinning = False
+    , spinTimer = 0
+    , wheelRotation = 0
+    , ballRotation = pi / 2
     , message = "Click the table to place chips. Press C to change chip, Enter to spin."
     }
 

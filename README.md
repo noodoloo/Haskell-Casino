@@ -20,10 +20,9 @@ That split makes it easier for two people to work in parallel: one person can im
 ## Suggested next steps
 
 1. Support more roulette bet types like dozens, columns, splits, and corners.
-2. Animate the wheel and ball rather than instantly revealing the result.
-3. Add chip removal, undo, or clear-table controls before a spin.
-4. Add tests for payout rules in `Roulette.Logic`.
-5. Decide whether your course/project wants American roulette (`0` and `00`) or European roulette (`0` only).
+2. Add chip removal, undo, or clear-table controls before a spin.
+3. Add tests for payout rules in `Roulette.Logic`.
+4. Decide whether your course/project wants American roulette (`0` and `00`) or European roulette (`0` only).
 
 ## Running
 

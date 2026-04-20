@@ -1,0 +1,14 @@
+name:                blackjack-casino
+version:             0.0.0.0
+build-type:          Simple
+cabal-version:       >=1.10
+
+executable blackjack-casino
+  main-is:             Main.hs
+  hs-source-dirs:      app src
+  other-modules:       Blackjack
+  default-language:    Haskell2010
+  build-depends:
+      base >=4.14 && <5
+    , gloss
+    , random
