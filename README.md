@@ -29,5 +29,5 @@ That split makes it easier for two people to work in parallel: one person can im
 If you have Cabal installed:
 
 ```bash
-cabal run roulette-app
+cabal run casino-games
 ```

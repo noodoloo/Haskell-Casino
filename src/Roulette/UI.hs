@@ -1,4 +1,9 @@
-module Roulette.UI (runRouletteApp) where
+module Roulette.UI
+    ( runRouletteApp
+    , render
+    , handleEvent
+    , stepWorld
+    ) where
 
 import Data.List (find)
 import Graphics.Gloss
@@ -35,7 +40,7 @@ chipTrayTop = 355
 hudPanelX, hudPanelY, hudTextX :: Float
 hudPanelX = -555
 hudPanelY = 120
-hudTextX = -650
+hudTextX = -645
 
 outsideBetBoxes :: [(BetType, (Float, Float, Float, Float), String)]
 outsideBetBoxes =
@@ -62,7 +67,7 @@ render st =
             , drawWheel st
             , drawChipSelector st
             , drawHudPanel
-            , color (greyN 0.95) $ translate hudTextX 340 $ scale 0.22 0.22 $ text "Roulette"
+            , drawHudLabel hudTextX 340 0.22 "Roulette"
             , drawStatus st
             , drawInstructions
             ]
@@ -83,33 +88,37 @@ drawStatus st =
                 then "spinning..."
                 else maybe "none" showSpin (lastSpin st)
      in pictures
-            [ translate hudTextX 250 $ scale 0.18 0.18 $ color white $ text ("Balance: $" ++ show (balance st))
-            , translate hudTextX 210 $ scale 0.14 0.14 $ color white $ text ("On table: $" ++ show reserved)
-            , translate hudTextX 170 $ scale 0.14 0.14 $ color white $ text ("Available: $" ++ show available)
-            , translate hudTextX 130 $ scale 0.14 0.14 $ color white $ text ("Active bets: " ++ show (length (activeBets st)))
-            , translate hudTextX 90 $ scale 0.14 0.14 $ color white $ text ("Last spin: " ++ spinLabel)
-            , translate hudTextX 38 $ scale 0.11 0.11 $ color white $ text (trimMessage 34 (message st))
+            [ drawHudLabel hudTextX 254 0.16 ("Balance  $" ++ show (balance st))
+            , drawHudLabel hudTextX 215 0.13 ("On table $" ++ show reserved)
+            , drawHudLabel hudTextX 181 0.13 ("Open     $" ++ show available)
+            , drawHudLabel hudTextX 147 0.13 ("Bets     " ++ show (length (activeBets st)))
+            , drawHudLabel hudTextX 111 0.13 ("Last     " ++ spinLabel)
+            , drawMessageBlock st
+            ]
+
+drawMessageBlock :: GameState -> Picture
+drawMessageBlock st =
+    let (lineOne, lineTwo) = messageLines (message st)
+     in pictures
+            [ drawHudLabel hudTextX 66 0.105 "Status"
+            , drawHudLabel hudTextX 36 0.09 lineOne
+            , drawHudLabel hudTextX 12 0.09 lineTwo
             ]
 
 drawInstructions :: Picture
 drawInstructions =
     pictures
-        [ translate hudTextX (-58) $
-            scale 0.105 0.105 $
-                color (light white) $
-                    text "Click any number or outside bet"
-        , translate hudTextX (-88) $
-            scale 0.105 0.105 $
-                color (light white) $
-                    text "to place a chip on the table."
-        , translate hudTextX (-122) $
-            scale 0.105 0.105 $
-                color (light white) $
-                    text "Press C to cycle chips."
-        , translate hudTextX (-152) $
-            scale 0.105 0.105 $
-                color (light white) $
-                    text "Press Enter to spin."
+        [ drawHudLabel hudTextX (-38) 0.095 "Click a number or bet"
+        , drawHudLabel hudTextX (-66) 0.095 "to place a chip."
+        , drawHudLabel hudTextX (-104) 0.095 "C changes chip value."
+        , drawHudLabel hudTextX (-132) 0.095 "Enter spins the wheel."
+        ]
+
+drawHudLabel :: Float -> Float -> Float -> String -> Picture
+drawHudLabel x y size labelText =
+    pictures
+        [ translate (x + 1.5) (y - 1.5) $ scale size size $ color (makeColorI 8 24 18 180) $ text labelText
+        , translate x y $ scale size size $ color white $ text labelText
         ]
 
 drawTableFrame :: Picture
@@ -467,3 +476,49 @@ trimMessage maxLen msg
     | length msg <= maxLen = msg
     | maxLen <= 3 = take maxLen msg
     | otherwise = take (maxLen - 3) msg ++ "..."
+
+messageLines :: String -> (String, String)
+messageLines msg
+    | msg == "Chip placed. Press Enter to spin or keep betting." =
+        ("Chip placed.", "Enter spins.")
+    | msg == "Not enough balance for that bet." =
+        ("Not enough chips.", "Choose a smaller bet.")
+    | msg == "Place a bet before spinning." =
+        ("Place a bet first.", "Then press Enter.")
+    | msg == "Wheel spinning..." =
+        ("Wheel spinning...", "Good luck.")
+    | startsWith "Rolled " msg =
+        splitRolledMessage msg
+    | otherwise =
+        splitWordsLine 24 msg
+
+splitRolledMessage :: String -> (String, String)
+splitRolledMessage msg =
+    case break (== '.') msg of
+        (firstPart, '.' : rest) ->
+            (firstPart ++ ".", trimMessage 24 (dropWhile (== ' ') rest))
+        _ -> splitWordsLine 24 msg
+
+splitWordsLine :: Int -> String -> (String, String)
+splitWordsLine maxLen msg =
+    let ws = words msg
+        firstWords = takeWhileFits maxLen ws
+        secondWords = drop (length firstWords) ws
+     in ( trimMessage maxLen (unwords firstWords)
+        , trimMessage maxLen (unwords secondWords)
+        )
+
+takeWhileFits :: Int -> [String] -> [String]
+takeWhileFits maxLen = go [] 0
+  where
+    go chosen _ [] = reverse chosen
+    go [] _ (word : rest)
+        | length word <= maxLen = go [word] (length word) rest
+        | otherwise = [take maxLen word]
+    go chosen currentLen (word : rest)
+        | currentLen + 1 + length word <= maxLen =
+            go (word : chosen) (currentLen + 1 + length word) rest
+        | otherwise = reverse chosen
+
+startsWith :: String -> String -> Bool
+startsWith prefix value = take (length prefix) value == prefix

@@ -28,6 +28,7 @@ data GameState = GameState
     { balance :: Int
     , currentBet :: Int
     , lastSpin :: Maybe SpinResult
+    , leverTimer :: Float
     , message :: String
     }
     deriving (Eq, Show)
@@ -44,6 +45,7 @@ initialState =
         { balance = 500
         , currentBet = 25
         , lastSpin = Nothing
+        , leverTimer = 0
         , message = "Press Space or Enter to spin. Use Up/Down to change your bet."
         }
 

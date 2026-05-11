@@ -1,6 +1,9 @@
 module Blackjack
   ( Game
   , initialGame
+  , initialGameWithChips
+  , blackjackBankroll
+  , setBlackjackBankroll
   , runBlackjackApp
   , renderGame
   , handleEvent
@@ -43,6 +46,9 @@ data Game = Game
   , phase :: RoundPhase
   , chips :: Double
   , pendingBet :: Double
+  , insuranceBet :: Maybe Double
+  , dealTimer :: Float
+  , history :: [String]
   , message :: String
   , generator :: StdGen
   }
@@ -51,6 +57,21 @@ initialGame :: IO Game
 initialGame = do
   gen <- newStdGen
   pure (initialLobby gen)
+
+initialGameWithChips :: Double -> IO Game
+initialGameWithChips startingChips = do
+  gen <- newStdGen
+  pure (initialLobby gen) {chips = startingChips, pendingBet = clampBet startingChips 25}
+
+blackjackBankroll :: Game -> Double
+blackjackBankroll game =
+  case phase game of
+    PlayerTurn -> chips game + sum (map betAmount (playerHands game)) + maybe 0 id (insuranceBet game)
+    _ -> chips game
+
+setBlackjackBankroll :: Double -> Game -> Game
+setBlackjackBankroll amount game =
+  game {chips = amount, pendingBet = clampBet amount (pendingBet game)}
 
 runBlackjackApp :: IO ()
 runBlackjackApp = do
@@ -65,7 +86,8 @@ runBlackjackApp = do
     stepGame
 
 stepGame :: Float -> Game -> Game
-stepGame _ = id
+stepGame dt game =
+  game {dealTimer = max 0 (dealTimer game - dt)}
 
 handleEvent :: Event -> Game -> Game
 handleEvent event game =
@@ -83,8 +105,10 @@ renderGame game =
     , currentTotalText game
     , drawBankrollText game
     , drawBettingChips game
+    , drawShoe
     , drawDealerArea game
     , drawPlayerArea game
+    , drawHistoryPanel game
     , drawStatusBar game
     ]
 
@@ -98,6 +122,9 @@ initialLobby gen =
     , phase = Betting
     , chips = 500
     , pendingBet = 25
+    , insuranceBet = Nothing
+    , dealTimer = 0
+    , history = []
     , message = "Choose your bet with Up/Down, then press Enter to deal."
     , generator = gen
     }
@@ -119,7 +146,12 @@ startRound game =
         , phase = PlayerTurn
         , chips = chips game - wager
         , pendingBet = wager
-        , message = "Your turn. H = hit, S = stand, P = split when allowed."
+        , insuranceBet = Nothing
+        , dealTimer = 0.8
+        , message =
+            if rank dealerCard1 == Ace
+              then "Dealer shows Ace. Press I for insurance, U to surrender, or play your hand."
+              else "Your turn. H hit, S stand, D double, P split, U surrender."
         , generator = gen1
         }
    in resolveOpeningNaturals dealtGame
@@ -149,8 +181,12 @@ handlePlayerTurnEvent event game =
     EventKey (Char 'S') Down _ _ -> playerStand game
     EventKey (Char 'd') Down _ _ -> playerDoubleDown game
     EventKey (Char 'D') Down _ _ -> playerDoubleDown game
+    EventKey (Char 'i') Down _ _ -> buyInsurance game
+    EventKey (Char 'I') Down _ _ -> buyInsurance game
     EventKey (Char 'p') Down _ _ -> playerSplit game
     EventKey (Char 'P') Down _ _ -> playerSplit game
+    EventKey (Char 'u') Down _ _ -> playerSurrender game
+    EventKey (Char 'U') Down _ _ -> playerSurrender game
     EventKey (SpecialKey KeySpace) Down _ _ -> playerStand game
     _ -> game
 
@@ -172,6 +208,8 @@ returnToBetting game =
     , activeHandIndex = 0
     , phase = Betting
     , pendingBet = normalizedBet game
+    , insuranceBet = Nothing
+    , dealTimer = 0
     , message = "Choose your bet with Up/Down, then press D to deal."
     }
 
@@ -229,6 +267,7 @@ playerHit game
                       if charlie
                         then "Hand " ++ show (activeHandIndex game + 1) ++ " made a 5-card Charlie with " ++ showCard newCard ++ "."
                         else "Hand " ++ show (activeHandIndex game + 1) ++ " drew " ++ showCard newCard ++ "."
+              , dealTimer = 0.35
               }
        in if busted || charlie then advanceAfterAction nextGame else nextGame
 
@@ -269,6 +308,7 @@ playerSplit game
                     { deck = deck2
                     , chips = chips game - betAmount hand
                     , playerHands = updatedHands
+                    , dealTimer = 0.55
                     , message = "Hand split into two hands. The matching bet was added automatically."
                     }
             _ -> game {message = "You can only split a hand with exactly two cards."}
@@ -297,6 +337,7 @@ playerDoubleDown game
               { deck = newDeck
               , chips = chips game - betAmount hand
               , playerHands = updatedHands
+              , dealTimer = 0.35
               , message =
                   "Hand "
                     ++ show (idx + 1)
@@ -305,6 +346,51 @@ playerDoubleDown game
                     ++ "."
               }
        in advanceAfterAction doubledGame
+
+buyInsurance :: Game -> Game
+buyInsurance game
+  | phase game /= PlayerTurn = game
+  | insuranceBet game /= Nothing = game {message = "Insurance is already placed for this round."}
+  | not dealerShowsAce = game {message = "Insurance is only available when the dealer shows an Ace."}
+  | not openingDecision = game {message = "Insurance is only available before you take another action."}
+  | chips game < premium = game {message = "You need $" ++ formatMoney premium ++ " for insurance."}
+  | otherwise =
+      game
+        { chips = chips game - premium
+        , insuranceBet = Just premium
+        , message = "Insurance placed for $" ++ formatMoney premium ++ "."
+        }
+  where
+    dealerShowsAce =
+      case dealerHand game of
+        (card : _) -> rank card == Ace
+        [] -> False
+    openingDecision =
+      case playerHands game of
+        [hand] -> length (cards hand) == 2 && activeHandIndex game == 0
+        _ -> False
+    premium = maybe 0 ((/ 2) . betAmount) (currentPlayerHand game)
+
+playerSurrender :: Game -> Game
+playerSurrender game
+  | phase game /= PlayerTurn = game
+  | not canSurrender = game {message = "Surrender is only available before taking another action."}
+  | otherwise =
+      let hand = playerHands game !! activeHandIndex game
+          refund = betAmount hand / 2
+          summaryLine = "Surrendered and got $" ++ formatMoney refund ++ " back."
+       in game
+            { phase = RoundFinished
+            , activeHandIndex = 0
+            , chips = chips game + refund
+            , message = summaryLine ++ " Press N for the next betting round."
+            , history = addHistory summaryLine (history game)
+            }
+  where
+    canSurrender =
+      case playerHands game of
+        [hand] -> activeHandIndex game == 0 && length (cards hand) == 2 && blackjackEligible hand
+        _ -> False
 
 advanceAfterAction :: Game -> Game
 advanceAfterAction game =
@@ -316,14 +402,17 @@ finishDealerTurn :: Game -> Game
 finishDealerTurn game =
   let finalDealer = playDealer (deck game) (dealerHand game)
       finalHands = playerHands game
-      payout = sum (map (settlementForHand finalDealer) finalHands)
+      payout = sum (map (settlementForHand finalDealer) finalHands) + insurancePayout game finalDealer
       resultLines = zipWith (describeOutcome finalDealer) [1 ..] finalHands
+      insuranceLine = describeInsurance game finalDealer
+      roundSummary = unwords (resultLines ++ insuranceLine)
    in game
         { dealerHand = finalDealer
         , phase = RoundFinished
         , activeHandIndex = 0
         , chips = chips game + payout
-        , message = unwords resultLines ++ " Press N for the next betting round."
+        , message = roundSummary ++ " Press N for the next betting round."
+        , history = addHistory roundSummary (history game)
         }
 
 playDealer :: [Card] -> [Card] -> [Card]
@@ -374,20 +463,29 @@ settlementForHand dealer hand
 
 resolveOpeningNaturals :: Game -> Game
 resolveOpeningNaturals game
+  | dealerNatural && dealerShowsAce && not playerNatural =
+      game {message = "Dealer shows Ace. Press I for insurance before playing your hand."}
   | playerNatural || dealerNatural =
       let finalHands = playerHands game
           finalDealer = dealerHand game
-          payout = sum (map (settlementForHand finalDealer) finalHands)
+          payout = sum (map (settlementForHand finalDealer) finalHands) + insurancePayout game finalDealer
           resultLines = zipWith (describeOutcome finalDealer) [1 ..] finalHands
+          insuranceLine = describeInsurance game finalDealer
+          roundSummary = unwords (resultLines ++ insuranceLine)
        in game
             { phase = RoundFinished
             , chips = chips game + payout
-            , message = unwords resultLines ++ " Press N for the next betting round."
+            , message = roundSummary ++ " Press N for the next betting round."
+            , history = addHistory roundSummary (history game)
             }
   | otherwise = game
   where
     playerNatural = any hasNaturalBlackjack (playerHands game)
     dealerNatural = hasNaturalBlackjack (PlayerHand (dealerHand game) False 0 False)
+    dealerShowsAce =
+      case dealerHand game of
+        (card : _) -> rank card == Ace
+        [] -> False
 
 hasActiveHand :: Game -> Bool
 hasActiveHand game =
@@ -404,6 +502,26 @@ hasEnoughChipsToDouble game =
   case currentPlayerHand game of
     Just hand -> chips game >= betAmount hand
     Nothing -> False
+
+insurancePayout :: Game -> [Card] -> Double
+insurancePayout game finalDealer =
+  case insuranceBet game of
+    Just premium
+      | hasNaturalBlackjack (PlayerHand finalDealer False 0 False) -> premium * 3
+    _ -> 0
+
+describeInsurance :: Game -> [Card] -> [String]
+describeInsurance game finalDealer =
+  case insuranceBet game of
+    Nothing -> []
+    Just premium
+      | hasNaturalBlackjack (PlayerHand finalDealer False 0 False) ->
+          ["Insurance pays $" ++ formatMoney (premium * 2) ++ "."]
+      | otherwise ->
+          ["Insurance loses $" ++ formatMoney premium ++ "."]
+
+addHistory :: String -> [String] -> [String]
+addHistory entry entries = take 5 (entry : entries)
 
 currentPlayerHand :: Game -> Maybe PlayerHand
 currentPlayerHand game
@@ -464,6 +582,12 @@ formatMoney amount =
   if abs (amount - fromIntegral (round amount :: Int)) < 0.001
     then show (round amount :: Int)
     else showFFloat (Just 1) amount ""
+
+trimMessage :: Int -> String -> String
+trimMessage maxLen msg
+  | length msg <= maxLen = msg
+  | maxLen <= 3 = take maxLen msg
+  | otherwise = take (maxLen - 3) msg ++ "..."
 
 handTotal :: [Card] -> Int
 handTotal hand = adjustForAces rawTotal aceCount
@@ -584,27 +708,31 @@ showSuitShort s =
 tableBackground :: Picture
 tableBackground =
   Pictures
-    [ Color (makeColorI 10 80 40 255) (Polygon [(-600, -340), (600, -340), (600, 340), (-600, 340)])
-    , Color (makeColorI 180 140 60 255) (lineLoop [(-560, -300), (560, -300), (560, 300), (-560, 300)])
+    [ Color (makeColorI 7 58 42 255) (Polygon [(-640, -430), (640, -430), (640, 430), (-640, 430)])
+    , Color (makeColorI 82 44 28 255) (Polygon [(-590, -330), (590, -330), (590, 330), (-590, 330)])
+    , Color (makeColorI 15 96 58 255) (Polygon [(-555, -295), (555, -295), (555, 295), (-555, 295)])
+    , Color (makeColorI 206 168 80 255) (lineLoop [(-590, -330), (590, -330), (590, 330), (-590, 330)])
+    , Color (makeColorI 235 205 130 255) (lineLoop [(-520, -238), (180, -238), (180, 238), (-520, 238)])
+    , Color (makeColorI 9 69 44 180) (translate (-170) (-70) (rectangleSolid 650 290))
     ]
 
 titleText :: Picture
 titleText =
-  translate (-180) 275 $
-    scale 0.35 0.35 $
+  translate (-175) 260 $
+    scale 0.32 0.32 $
       color white $
         Text "Blackjack Table"
 
 controlsText :: Picture
 controlsText =
-  translate (-550) (-320) $
-    scale 0.13 0.13 $
+  translate (-510) (-320) $
+    scale 0.105 0.105 $
       color white $
-        Text "Betting: Up/Down change bet, Deal with Enter | Playing: H hit, S stand, D double, P split | N next round"
+        Text "M/Esc menu | Deal Enter | H hit | S stand | D double | P split | I insurance | U surrender | N next round"
 
 currentTotalText :: Game -> Picture
 currentTotalText game =
-  translate (-210) 15 $
+  translate (-285) 15 $
     scale 0.18 0.18 $
       color white $
         Text totalLabel
@@ -617,8 +745,9 @@ currentTotalText game =
 drawDealerArea :: Game -> Picture
 drawDealerArea game =
   Pictures
-    [ translate (-520) 180 $ scale 0.18 0.18 $ color white $ Text dealerLabel
-    , Pictures (zipWith (drawCardPicture hideSecondCard) [0 ..] (dealerHand game))
+    [ translate (-500) 205 $ scale 0.18 0.18 $ color (makeColorI 255 235 172 255) $ Text dealerLabel
+    , translate (-500) 170 $ scale 0.105 0.105 $ color white $ Text "Dealer hits soft 17"
+    , Pictures (zipWith (drawCardPicture game hideSecondCard) [0 ..] (dealerHand game))
     ]
   where
     hideSecondCard = phase game == PlayerTurn
@@ -631,8 +760,11 @@ drawDealerArea game =
 drawBankrollText :: Game -> Picture
 drawBankrollText game =
   Pictures
-    [ translate (215) 245 $ scale 0.18 0.18 $ color white $ Text ("Chips: $" ++ formatMoney (chips game))
-    , translate (215) 215 $ scale 0.18 0.18 $ color white $ Text betLabel
+    [ Color (makeColorI 34 88 74 230) (translate 356 225 (rectangleSolid 310 110))
+    , Color (makeColorI 206 168 80 255) (translate 356 225 (rectangleWire 310 110))
+    , translate 225 250 $ scale 0.17 0.17 $ color white $ Text ("Chips: $" ++ formatMoney (chips game))
+    , translate 225 220 $ scale 0.15 0.15 $ color white $ Text betLabel
+    , translate 225 190 $ scale 0.13 0.13 $ color white $ Text insuranceLabel
     ]
   where
     betLabel =
@@ -642,11 +774,15 @@ drawBankrollText game =
           case currentPlayerHand game of
             Just hand -> "Active bet: $" ++ formatMoney (betAmount hand)
             Nothing -> "Selected bet: $" ++ formatMoney (normalizedBet game)
+    insuranceLabel =
+      case insuranceBet game of
+        Nothing -> "Insurance: -"
+        Just amount -> "Insurance: $" ++ formatMoney amount
 
 drawBettingChips :: Game -> Picture
 drawBettingChips _ =
   Pictures
-    [ translate 325 165 $ scale 0.15 0.15 $ color white $ Text "Click chips to add to bet"
+    [ translate 225 152 $ scale 0.115 0.115 $ color white $ Text "Click chips to add to bet"
     , Pictures (map drawChip chipButtons)
     ]
   where
@@ -680,10 +816,10 @@ drawPlayerArea game =
     handCount = length (playerHands game)
     offsets =
       case handCount of
-        1 -> [0]
-        2 -> [-180, 180]
-        3 -> [-240, 0, 240]
-        _ -> [-300, -100, 100, 300]
+        1 -> [-75]
+        2 -> [-235, 85]
+        3 -> [-290, -75, 140]
+        _ -> [-335, -160, 15, 190]
     drawHand idx hand =
       let xOffset = offsets !! idx
           total = handTotal (cards hand)
@@ -691,29 +827,33 @@ drawPlayerArea game =
           label =
             "Hand "
               ++ show (idx + 1)
-              ++ " | Bet: $"
+              ++ "  Bet $"
               ++ formatMoney (betAmount hand)
-              ++ if active then " <- active" else ""
-              ++ " | Total: "
+              ++ if active then "  active" else ""
+              ++ "  Total "
               ++ show total
               ++ if total > 21 then " BUST" else ""
        in Pictures
-            [ translate (xOffset - 95) (-25) $ scale 0.16 0.16 $ color white $ Text label
+            [ translate (xOffset - 92) (-28) $ scale 0.13 0.13 $ color white $ Text label
             , translate xOffset (-155) $ drawHandHalo active
-            , Pictures (zipWith (drawPlayerCard xOffset) [0 ..] (cards hand))
+            , Pictures (zipWith (drawPlayerCard game xOffset (length (cards hand))) [0 ..] (cards hand))
             ]
     drawBettingPrompt =
-      translate (-300) (-55) $
-        scale 0.23 0.23 $
+      translate (-250) (-55) $
+        scale 0.19 0.19 $
           color white $
-            Text "Place your bet, then press D to deal."
+            Text "Place your bet, then press D."
 
 drawStatusBar :: Game -> Picture
 drawStatusBar game =
-  translate (-550) (-290) $
-    scale 0.14 0.14 $
-      color white $
-        Text (message game)
+  Pictures
+    [ Color (makeColorI 36 87 76 230) (translate 0 (-248) (rectangleSolid 1040 42))
+    , Color (makeColorI 206 168 80 255) (translate 0 (-248) (rectangleWire 1040 42))
+    , translate (-500) (-256) $
+        scale 0.12 0.12 $
+          color white $
+            Text (trimMessage 118 (message game))
+    ]
 
 drawHandHalo :: Bool -> Picture
 drawHandHalo active =
@@ -721,9 +861,10 @@ drawHandHalo active =
     then Color (makeColor 1 1 1 0.12) (rectangleSolid 260 230)
     else Blank
 
-drawPlayerCard :: Float -> Int -> Card -> Picture
-drawPlayerCard xOffset idx card =
-  translate (xOffset + cardColumnOffset idx) (cardRowOffset idx) (cardFacePicture card)
+drawPlayerCard :: Game -> Float -> Int -> Int -> Card -> Picture
+drawPlayerCard game xOffset cardCount idx card =
+  let (dx, dy) = cardSlideOffset game (idx == cardCount - 1)
+   in translate (xOffset + cardColumnOffset idx + dx) (cardRowOffset idx + dy) (cardFacePicture card)
 
 cardColumnOffset :: Int -> Float
 cardColumnOffset idx = -70 + fromIntegral (idx `mod` 4) * 55
@@ -731,12 +872,21 @@ cardColumnOffset idx = -70 + fromIntegral (idx `mod` 4) * 55
 cardRowOffset :: Int -> Float
 cardRowOffset idx = -105 - fromIntegral (idx `div` 4) * 82
 
-drawCardPicture :: Bool -> Int -> Card -> Picture
-drawCardPicture hideCard idx card =
-  translate (-70 + fromIntegral idx * 55) 135 $
+drawCardPicture :: Game -> Bool -> Int -> Card -> Picture
+drawCardPicture game hideCard idx card =
+  let (dx, dy) = cardSlideOffset game (idx == length (dealerHand game) - 1)
+   in translate (-145 + fromIntegral idx * 55 + dx) (135 + dy) $
     if hideCard && idx == 1
       then cardBackPicture
       else cardFacePicture card
+
+cardSlideOffset :: Game -> Bool -> (Float, Float)
+cardSlideOffset game isNewest
+  | not isNewest = (0, 0)
+  | dealTimer game <= 0 = (0, 0)
+  | otherwise =
+      let t = min 1 (dealTimer game / 0.8)
+       in (180 * t, 80 * t)
 
 cardFacePicture :: Card -> Picture
 cardFacePicture card =
@@ -761,12 +911,37 @@ cardBackPicture =
     , Color (makeColorI 180 210 255 255) (rectangleWire 36 56)
     ]
 
+drawShoe :: Picture
+drawShoe =
+  translate 125 178 $
+    Pictures
+      [ Color (makeColorI 45 35 32 255) (rectangleSolid 90 62)
+      , Color (makeColorI 206 168 80 255) (rectangleWire 90 62)
+      , Color (makeColorI 28 28 32 255) (translate (-10) 4 (rectangleSolid 58 42))
+      , translate (-30) (-42) $ scale 0.1 0.1 $ color white $ Text "SHOE"
+      ]
+
+drawHistoryPanel :: Game -> Picture
+drawHistoryPanel game =
+  Pictures
+    [ Color (makeColorI 34 88 74 230) (translate 357 (-70) (rectangleSolid 310 210))
+    , Color (makeColorI 206 168 80 255) (translate 357 (-70) (rectangleWire 310 210))
+    , translate 225 20 $ scale 0.14 0.14 $ color (makeColorI 255 235 172 255) $ Text "Round history"
+    , Pictures (zipWith drawEntry ([0 ..] :: [Int]) (history game))
+    ]
+  where
+    drawEntry idx entry =
+      translate 225 (negate 15 - fromIntegral idx * 32) $
+        scale 0.09 0.09 $
+          color white $
+            Text (trimMessage 42 entry)
+
 chipButtons :: [(Double, Float, Float, Color)]
 chipButtons =
-  [ (5, 430, 110, makeColorI 210 60 60 255)
-  , (25, 430, 45, makeColorI 55 115 215 255)
-  , (100, 430, (-20), makeColorI 45 155 95 255)
-  , (0, 430, (-95), makeColorI 235 235 235 255)
+  [ (5, 240, 105, makeColorI 210 60 60 255)
+  , (25, 310, 105, makeColorI 55 115 215 255)
+  , (100, 380, 105, makeColorI 45 155 95 255)
+  , (0, 450, 105, makeColorI 235 235 235 255)
   ]
 
 clickedChipValue :: (Float, Float) -> Maybe Double

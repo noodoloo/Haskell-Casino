@@ -1,4 +1,9 @@
-module Slots.UI (runSlotsApp) where
+module Slots.UI
+    ( runSlotsApp
+    , render
+    , handleEvent
+    , stepWorld
+    ) where
 
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game
@@ -27,6 +32,7 @@ render st =
             , drawHeader
             , drawReels st
             , drawHud st
+            , drawLever st
             , drawControls
             , drawPaytable
             ]
@@ -34,15 +40,17 @@ render st =
 drawCabinet :: Picture
 drawCabinet =
     pictures
-        [ color (makeColorI 76 32 48 255) $ rectangleSolid 900 585
-        , color (makeColorI 232 187 82 255) $ rectangleWire 900 585
+        [ color (makeColorI 76 32 48 255) $ rectangleSolid 1000 585
+        , color (makeColorI 232 187 82 255) $ rectangleWire 1000 585
         , color (makeColorI 30 31 34 255) $ translate (-95) 45 $ rectangleSolid 585 238
         , color (makeColorI 232 187 82 255) $ translate (-95) 45 $ rectangleWire 585 238
         , color (makeColorI 36 87 76 255) $ translate (-95) (-198) $ rectangleSolid 585 104
         , color (makeColorI 232 187 82 255) $ translate (-95) (-198) $ rectangleWire 585 104
         , color (makeColorI 40 64 66 255) $ translate 315 45 $ rectangleSolid 210 360
         , color (makeColorI 232 187 82 255) $ translate 315 45 $ rectangleWire 210 360
-        , pictures (map drawTopLight [-360, -300 .. 360])
+        , color (makeColorI 55 34 42 255) $ translate 460 20 $ rectangleSolid 92 360
+        , color (makeColorI 232 187 82 255) $ translate 460 20 $ rectangleWire 92 360
+        , pictures (map drawTopLight [-420, -360 .. 420])
         ]
 
 drawTopLight :: Float -> Picture
@@ -141,7 +149,7 @@ drawSpinButton =
 drawControls :: Picture
 drawControls =
     pictures
-        [ drawLabel (-405) (-325) 0.12 white "Space/Enter spin | Up/Down bet | M max bet | R reset | Click SPIN"
+        [ drawLabel (-405) (-325) 0.12 white "Space/Enter spin | L pull lever | Up/Down bet | M max | R reset"
         ]
 
 drawPaytable :: Picture
@@ -160,8 +168,10 @@ drawPaytable =
 handleEvent :: Event -> GameState -> IO GameState
 handleEvent event st =
     case event of
-        EventKey (SpecialKey KeySpace) Down _ _ -> spinSlots st
-        EventKey (SpecialKey KeyEnter) Down _ _ -> spinSlots st
+        EventKey (SpecialKey KeySpace) Down _ _ -> pullAndSpin st
+        EventKey (SpecialKey KeyEnter) Down _ _ -> pullAndSpin st
+        EventKey (Char 'l') Down _ _ -> pullAndSpin st
+        EventKey (Char 'L') Down _ _ -> pullAndSpin st
         EventKey (SpecialKey KeyUp) Down _ _ -> pure $ changeBet 1 st
         EventKey (SpecialKey KeyDown) Down _ _ -> pure $ changeBet (-1) st
         EventKey (Char '+') Down _ _ -> pure $ changeBet 1 st
@@ -171,19 +181,63 @@ handleEvent event st =
         EventKey (Char 'r') Down _ _ -> pure resetSlots
         EventKey (Char 'R') Down _ _ -> pure resetSlots
         EventKey (MouseButton LeftButton) Down _ mousePos ->
-            if spinButtonClicked mousePos
-                then spinSlots st
+            if spinButtonClicked mousePos || leverClicked mousePos
+                then pullAndSpin st
                 else pure st
         _ -> pure st
 
 stepWorld :: Float -> GameState -> IO GameState
-stepWorld _ st = pure st
+stepWorld dt st =
+    pure st {leverTimer = max 0 (leverTimer st - dt)}
+
+pullAndSpin :: GameState -> IO GameState
+pullAndSpin st
+    | balance st <= 0 = spinSlots st
+    | currentBet st > balance st = spinSlots st
+    | otherwise = do
+        spun <- spinSlots st
+        pure spun {leverTimer = 0.32}
+
+drawLever :: GameState -> Picture
+drawLever st =
+    let amountPulled = min 1 (leverTimer st / 0.32)
+        handleY = 112 - (82 * amountPulled)
+     in pictures
+            [ color (makeColorI 28 28 30 255) $ translate 460 32 $ rectangleSolid 28 210
+            , color (makeColorI 102 77 56 255) $ translate 460 32 $ rectangleWire 28 210
+            , color (makeColorI 30 30 32 255) $ translate 460 (-110) $ rectangleSolid 62 34
+            , color (makeColorI 232 187 82 255) $ translate 460 (-110) $ rectangleWire 62 34
+            , drawLeverArm (460, 104) (492, handleY) 7
+            , color (makeColorI 232 187 82 255) $ translate 460 104 $ circleSolid 13
+            , color (makeColorI 196 42 58 255) $ translate 492 handleY $ circleSolid 24
+            , color white $ translate 492 handleY $ circle 24
+            , drawLabel 438 (-118) 0.09 white "PULL"
+            ]
+
+drawLeverArm :: (Float, Float) -> (Float, Float) -> Float -> Picture
+drawLeverArm (x1, y1) (x2, y2) width =
+    let dx = x2 - x1
+        dy = y2 - y1
+        len = sqrt (dx * dx + dy * dy)
+        nx = negate dy / len * width
+        ny = dx / len * width
+     in color (makeColorI 190 190 176 255) $
+            polygon
+                [ (x1 + nx, y1 + ny)
+                , (x1 - nx, y1 - ny)
+                , (x2 - nx, y2 - ny)
+                , (x2 + nx, y2 + ny)
+                ]
 
 spinButtonClicked :: (Float, Float) -> Bool
 spinButtonClicked (mx, my) =
     let dx = mx - 155
         dy = my + 230
      in dx * dx + dy * dy <= 44 * 44
+
+leverClicked :: (Float, Float) -> Bool
+leverClicked (mx, my) =
+    mx >= 414 && mx <= 520 && my >= (-130) && my <= 165
 
 drawLabel :: Float -> Float -> Float -> Color -> String -> Picture
 drawLabel x y size labelColor label =
