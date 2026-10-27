@@ -10,6 +10,8 @@ module Roulette.Types
 
 data BetType
     = StraightUp Int
+    | Corner [Int]
+    | Column Int
     | Red
     | Black
     | Even

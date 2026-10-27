@@ -1,7 +1,7 @@
 module Main where
 
-import qualified BalatroMini as Balatro
-import qualified Blackjack as Blackjack
+import qualified BalatroMini.Game as Balatro
+import qualified Blackjack.Game as Blackjack
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game
 import qualified Roulette.UI as Roulette

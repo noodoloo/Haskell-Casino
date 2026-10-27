@@ -30,6 +30,12 @@ resolveBet bet result =
      in case betType bet of
             StraightUp chosen ->
                 if n == chosen then wager * 35 else negate wager
+            Corner cornerNumbers ->
+                if n `elem` cornerNumbers then wager * 8 else negate wager
+            Column rowIndex ->
+                if n /= 0 && rowIndex >= 0 && rowIndex < length boardNumbers && n `elem` (boardNumbers !! rowIndex)
+                    then wager * 2
+                    else negate wager
             Red ->
                 if n /= 0 && wasRed result then wager else negate wager
             Black ->

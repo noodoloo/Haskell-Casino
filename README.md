@@ -1,32 +1,20 @@
-# Haskell Roulette Starter
-
-This repo is a starter scaffold for the roulette section of a larger casino-games project.
-
-## Why this structure
-
 - `src/Roulette/Types.hs` keeps the shared data model together.
 - `src/Roulette/Logic.hs` contains pure roulette rules and balance updates.
-- `src/Roulette/UI.hs` uses `Gloss` to draw a basic roulette table and respond to keys.
+- `src/Roulette/UI.hs` uses `Gloss` to draw. 
+
+- `src/Slots/Types.hs` defines the reel symbols, spin results, bet steps, and game state.
+- `src/Slots/Logic.hs` contains the slot rules: weighted reel spins, payout multipliers, and bet changes.
+- `src/Slots/UI.hs` uses `Gloss` to draw the machine and lever and handles input.
+
+- `src/Blackjack/` holds Blackjack, split into `Types`, `Cards` (deck and hand totals), `State` (game-state helpers), `Actions` (hit/stand/split/double/insurance/surrender), `Settlement` (dealer play and payouts), `Input`, `Render`, `Chips`, and `Utils`. `Blackjack.Game` is the public entry point used by `Main`.
+
+- `src/BalatroMini/` holds Balatro Mini, split into `Types`, `Cards`, `Content` (blinds, jokers, hand tables), `HandEval` (poker hand detection), `Jokers`, `Scoring`, `Economy` (cash and interest), `Run` (starting runs and blinds), `Round` (playing and discarding), `Shop`, `Layout` (click areas), `Input`, `Render` (with `Render/Widgets` and `Render/Overlays`), and `Utils`. `BalatroMini.Game` is the public entry point used by `Main`.
+
 - `app/Main.hs` is just the app entry point.
-
-That split makes it easier for two people to work in parallel: one person can improve game rules and payouts while the other improves the visual layer.
-
-## Current controls
-
-- Left click places a chip on a number or outside-bet box.
-- `C` cycles chip values through `$5`, `$10`, `$25`, and `$50`.
-- `Enter` spins the wheel and resolves every placed chip together.
-
-## Suggested next steps
-
-1. Support more roulette bet types like dozens, columns, splits, and corners.
-2. Add chip removal, undo, or clear-table controls before a spin.
-3. Add tests for payout rules in `Roulette.Logic`.
-4. Decide whether your course/project wants American roulette (`0` and `00`) or European roulette (`0` only).
 
 ## Running
 
-If you have Cabal installed:
+First change dir into "Haskell Games", then if you have Cabal installed:
 
 ```bash
 cabal run casino-games

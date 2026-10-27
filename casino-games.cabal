@@ -5,12 +5,37 @@ build-type:         Simple
 
 executable casino-games
     main-is:          Main.hs
-    hs-source-dirs:   app, src, .
+    hs-source-dirs:   app, src
     default-language: Haskell2010
     ghc-options:      -Wall
     other-modules:
-        BalatroMini
-        Blackjack
+        BalatroMini.Cards
+        BalatroMini.Content
+        BalatroMini.Economy
+        BalatroMini.Game
+        BalatroMini.HandEval
+        BalatroMini.Input
+        BalatroMini.Jokers
+        BalatroMini.Layout
+        BalatroMini.Render
+        BalatroMini.Render.Overlays
+        BalatroMini.Render.Widgets
+        BalatroMini.Round
+        BalatroMini.Run
+        BalatroMini.Scoring
+        BalatroMini.Shop
+        BalatroMini.Types
+        BalatroMini.Utils
+        Blackjack.Actions
+        Blackjack.Cards
+        Blackjack.Chips
+        Blackjack.Game
+        Blackjack.Input
+        Blackjack.Render
+        Blackjack.Settlement
+        Blackjack.State
+        Blackjack.Types
+        Blackjack.Utils
         Roulette.Logic
         Roulette.Types
         Roulette.UI

@@ -5,7 +5,7 @@ module Roulette.UI
     , stepWorld
     ) where
 
-import Data.List (find)
+import Data.List (find, sort)
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game
 
@@ -27,6 +27,11 @@ cellHeight = 76
 boardLeft = -290
 boardBottom = -180
 
+columnBetLeft, columnBetWidth, cornerHitRadius :: Float
+columnBetLeft = boardLeft + (cellWidth * 12) + 10
+columnBetWidth = 52
+cornerHitRadius = 14
+
 zeroLeft, zeroWidth, sidePanelX :: Float
 zeroLeft = boardLeft - 84
 zeroWidth = 76
@@ -39,7 +44,7 @@ chipTrayTop = 355
 
 hudPanelX, hudPanelY, hudTextX :: Float
 hudPanelX = -555
-hudPanelY = 120
+hudPanelY = 108
 hudTextX = -645
 
 outsideBetBoxes :: [(BetType, (Float, Float, Float, Float), String)]
@@ -75,8 +80,8 @@ render st =
 drawHudPanel :: Picture
 drawHudPanel =
     pictures
-        [ color (makeColorI 8 60 30 240) $ translate hudPanelX hudPanelY $ rectangleSolid 248 455
-        , color (makeColorI 210 185 110 255) $ translate hudPanelX hudPanelY $ rectangleWire 248 455
+        [ color (makeColorI 8 60 30 240) $ translate hudPanelX hudPanelY $ rectangleSolid 248 520
+        , color (makeColorI 210 185 110 255) $ translate hudPanelX hudPanelY $ rectangleWire 248 520
         ]
 
 drawStatus :: GameState -> Picture
@@ -124,7 +129,7 @@ drawHudLabel x y size labelText =
 drawTableFrame :: Picture
 drawTableFrame =
     let tableLeft = zeroLeft - tablePadding
-        tableRight = boardLeft + (cellWidth * 12) + tablePadding
+        tableRight = columnBetLeft + columnBetWidth + tablePadding
         tableBottom = boardBottom - 172
         tableWidth = tableRight - tableLeft
         tableHeight = tableTop - tableBottom
@@ -142,6 +147,8 @@ drawBoard =
     pictures
         [ drawZeroCell
         , pictures $ concatMap drawRow (zip [0 ..] boardNumbers)
+        , drawColumnBets
+        , drawCornerTargets
         ]
 
 drawRow :: (Int, [Int]) -> [Picture]
@@ -176,6 +183,31 @@ drawCell rowIndex (colIndex, n) =
 
 drawOutsideBets :: Picture
 drawOutsideBets = pictures (map drawOutsideBet outsideBetBoxes)
+
+drawColumnBets :: Picture
+drawColumnBets = pictures (map drawColumnBet [0 .. 2])
+
+drawColumnBet :: Int -> Picture
+drawColumnBet rowIndex =
+    let x = columnBetLeft + columnBetWidth / 2
+        y = boardBottom + fromIntegral rowIndex * cellHeight + cellHeight / 2
+     in translate x y $
+            pictures
+                [ color (makeColorI 12 94 48 255) $ rectangleSolid columnBetWidth (cellHeight - 4)
+                , color white $ rectangleWire columnBetWidth (cellHeight - 4)
+                , translate (-18) (-8) $ scale 0.11 0.11 $ color white $ text "2 to 1"
+                ]
+
+drawCornerTargets :: Picture
+drawCornerTargets = pictures (map drawCornerTarget cornerBets)
+
+drawCornerTarget :: (BetType, (Float, Float)) -> Picture
+drawCornerTarget (_, (x, y)) =
+    translate x y $
+        pictures
+            [ color (makeColorI 232 179 38 255) $ circleSolid 8
+            , color (makeColorI 255 245 180 255) $ circleSolid 4
+            ]
 
 drawOutsideBet :: (BetType, (Float, Float, Float, Float), String) -> Picture
 drawOutsideBet (betKind, (leftX, bottomY, width, height), labelText) =
@@ -406,7 +438,29 @@ clickedBetType :: (Float, Float) -> Maybe BetType
 clickedBetType mousePos =
     case find (pointInBox mousePos . snd3) outsideBetBoxes of
         Just (betKind, _, _) -> Just betKind
-        Nothing -> clickedNumberBet mousePos
+        Nothing ->
+            case clickedColumnBet mousePos of
+                Just betKind -> Just betKind
+                Nothing ->
+                    case clickedCornerBet mousePos of
+                        Just betKind -> Just betKind
+                        Nothing -> clickedNumberBet mousePos
+
+clickedColumnBet :: (Float, Float) -> Maybe BetType
+clickedColumnBet mousePos =
+    fmap fst $
+        find
+            (pointInBox mousePos . snd)
+            [ (Column rowIndex, (columnBetLeft, boardBottom + fromIntegral rowIndex * cellHeight, columnBetWidth, cellHeight))
+            | rowIndex <- [0 .. 2]
+            ]
+
+clickedCornerBet :: (Float, Float) -> Maybe BetType
+clickedCornerBet (mx, my) =
+    fmap fst $
+        find
+            (\(_, (x, y)) -> distanceSquared (mx, my) (x, y) <= cornerHitRadius * cornerHitRadius)
+            cornerBets
 
 clickedNumberBet :: (Float, Float) -> Maybe BetType
 clickedNumberBet (mx, my)
@@ -427,12 +481,20 @@ chipPosition chosenBet =
         StraightUp n ->
             let positions = [(value, chipXY rowIndex colIndex) | (rowIndex, row) <- zip [0 ..] boardNumbers, (colIndex, value) <- zip [0 ..] row]
              in maybe (0, 0) snd (find ((== n) . fst) positions)
+        Corner cornerNumbers ->
+            let targetNumbers = sort cornerNumbers
+             in maybe (0, 0) snd (find (matchesCorner targetNumbers) cornerBets)
+        Column rowIndex ->
+            (columnBetLeft + columnBetWidth / 2, boardBottom + fromIntegral rowIndex * cellHeight + cellHeight / 2)
         Red -> outsideCenter 0
         Black -> outsideCenter 1
         Even -> outsideCenter 2
         Odd -> outsideCenter 3
         Low -> outsideCenter 4
         High -> outsideCenter 5
+  where
+    matchesCorner targetNumbers (Corner numbers, _) = sort numbers == targetNumbers
+    matchesCorner _ _ = False
 
 chipXY :: Int -> Int -> (Float, Float)
 chipXY rowIndex colIndex =
@@ -451,6 +513,23 @@ pointInBox (px, py) (leftX, bottomY, width, height) =
         && px <= leftX + width
         && py >= bottomY
         && py <= bottomY + height
+
+distanceSquared :: (Float, Float) -> (Float, Float) -> Float
+distanceSquared (x1, y1) (x2, y2) =
+    let dx = x1 - x2
+        dy = y1 - y2
+     in dx * dx + dy * dy
+
+cornerBets :: [(BetType, (Float, Float))]
+cornerBets =
+    [ ( Corner $ sort [boardNumbers !! rowIndex !! colIndex, boardNumbers !! rowIndex !! (colIndex + 1), boardNumbers !! (rowIndex + 1) !! colIndex, boardNumbers !! (rowIndex + 1) !! (colIndex + 1)]
+      , ( boardLeft + fromIntegral (colIndex + 1) * cellWidth
+        , boardBottom + fromIntegral (rowIndex + 1) * cellHeight
+        )
+      )
+    | rowIndex <- [0 .. 1]
+    , colIndex <- [0 .. 10]
+    ]
 
 safeIndex :: [a] -> Int -> Maybe a
 safeIndex xs idx
@@ -487,6 +566,8 @@ messageLines msg
         ("Place a bet first.", "Then press Enter.")
     | msg == "Wheel spinning..." =
         ("Wheel spinning...", "Good luck.")
+    | startsWith "Selected chip:" msg =
+        splitRolledMessage (replacePrefix "Selected chip:" "Chip:" msg)
     | startsWith "Rolled " msg =
         splitRolledMessage msg
     | otherwise =
@@ -522,3 +603,8 @@ takeWhileFits maxLen = go [] 0
 
 startsWith :: String -> String -> Bool
 startsWith prefix value = take (length prefix) value == prefix
+
+replacePrefix :: String -> String -> String -> String
+replacePrefix old new value
+    | startsWith old value = new ++ drop (length old) value
+    | otherwise = value
